@@ -1,0 +1,92 @@
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    char line[256];   /* 存放每次输入的一整行 */
+    char word[64];    /* 存放从行里取出的一个词 */
+    int quit = 0;     /* 是否退出的标志：0=不退出，1=退出 */
+
+    while (quit == 0)
+    {
+        /* 打印提示符 */
+        printf("> ");
+        fflush(stdout);
+
+        /* 读入一整行；按 Ctrl+Z 回车结束输入时返回 NULL，退出程序 */
+        if (fgets(line, sizeof(line), stdin) == NULL)
+            break;
+
+        /* 去掉末尾的换行符：找到 '\n' 就换成 '\0' */
+        int k = 0;
+        while (line[k] != '\0')
+        {
+            if (line[k] == '\n')
+            {
+                line[k] = '\0';
+                break;
+            }
+            k++;
+        }
+
+        /* 从行里一个词一个词地取出来处理 */
+        int i = 0;
+        while (line[i] != '\0')
+        {
+            /* 第一步：跳过词与词之间的空格 */
+            while (line[i] == ' ' || line[i] == '\t')
+                i++;
+
+            /* 如果后面没有内容了，结束 */
+            if (line[i] == '\0')
+                break;
+
+            /* 第二步：把一个词复制到 word 里 */
+            int j = 0;
+            while (line[i] != '\0' && line[i] != ' ' && line[i] != '\t')
+            {
+                word[j] = line[i];
+                j++;
+                i++;
+                if (j >= 63)   /* 防止 word 装不下溢出 */
+                    break;
+            }
+            word[j] = '\0';    /* 字符串必须以 '\0' 结尾 */
+
+            /* 第三步：判断这个词是什么，执行对应操作 */
+            if (strcmp(word, "exit") == 0 || strcmp(word, "quit") == 0)
+            {
+                quit = 1;      /* 标记退出 */
+                break;
+            }
+            else if (strcmp(word, "prices") == 0)
+            {
+                /* 打印价目表 */
+                printf("Item     No.  Pri.\n");
+                printf("------------------\n");
+                printf("%-8s %s %.2f\n", "Cola",     "001", 3.50);
+                printf("%-8s %s %.2f\n", "Lollipop", "002", 0.50);
+                printf("%-8s %s %.2f\n", "Noodles",  "003", 6.00);
+            }
+            else if (strcmp(word, "001") == 0)
+            {
+                printf("%-8s %.2f\n", "Cola", 3.50);
+            }
+            else if (strcmp(word, "002") == 0)
+            {
+                printf("%-8s %.2f\n", "Lollipop", 0.50);
+            }
+            else if (strcmp(word, "003") == 0)
+            {
+                printf("%-8s %.2f\n", "Noodles", 6.00);
+            }
+            else
+            {
+                printf("ERROR: code not found\n");
+            }
+        }
+        /* 一行里的词全部处理完，回到 while 顶部重新显示 "> " */
+    }
+
+    return 0;
+}
