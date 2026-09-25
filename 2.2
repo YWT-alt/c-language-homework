@@ -1,0 +1,311 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>   /* atof / atoi 用到 */
+
+#define MAX_ITEMS 100
+#define MAX_WORDS 8
+#define WORD_LEN  64
+
+/* ---------- 商品类型 ---------- */
+typedef struct {
+    char   name[16];    /* 商品名 */
+    char   code[12];    /* 条码   */
+    double price;       /* 价格   */
+    int    stock;       /* 库存   */
+} Item;
+
+Item items[MAX_ITEMS];
+int  item_count = 0;
+
+char admin_pass[64] = "admin123";   /* 初始密码，可自行修改 */
+
+/* ---------- 读一行，去掉末尾换行，返回 0 表示输入结束 ---------- */
+int read_line(char* buf, int size)
+{
+    if (fgets(buf, size, stdin) == NULL)
+        return 0;
+    int k = 0;
+    while (buf[k] != '\0')
+    {
+        if (buf[k] == '\n' || buf[k] == '\r')
+        {
+            buf[k] = '\0';
+            break;
+        }
+        k++;
+    }
+    return 1;
+}
+
+/* ---------- 把一行按空格切成多个词，返回词的个数 ---------- */
+int split_words(const char* line, char words[][WORD_LEN], int max_words)
+{
+    int i = 0, n = 0;
+    while (line[i] != '\0' && n < max_words)
+    {
+        while (line[i] == ' ' || line[i] == '\t')   /* 跳过空格 */
+            i++;
+        if (line[i] == '\0')
+            break;
+
+        int j = 0;
+        while (line[i] != '\0' && line[i] != ' ' && line[i] != '\t' && j < WORD_LEN - 1)
+        {
+            words[n][j] = line[i];   /* 复制一个词 */
+            j++;
+            i++;
+        }
+        words[n][j] = '\0';
+        n++;
+    }
+    return n;
+}
+
+/* ---------- 按条码查找，返回下标，找不到返回 -1 ---------- */
+int find_item(const char* code)
+{
+    for (int i = 0; i < item_count; i++)
+    {
+        if (strcmp(items[i].code, code) == 0)
+            return i;
+    }
+    return -1;
+}
+
+/* ---------- 打印价目表（包含库存） ---------- */
+void print_prices(void)
+{
+    printf("Item     No. Pri. Stock\n");
+    printf("-----------------------\n");
+    for (int i = 0; i < item_count; i++)
+        printf("%-8s %s %.2f %d\n",
+            items[i].name, items[i].code, items[i].price, items[i].stock);
+}
+
+/* ---------- 主程序 ---------- */
+int main(void)
+{
+    char line[256];
+    char words[MAX_WORDS][WORD_LEN];
+    char pw[64];
+    int admin_mode = 0;      /* 0 = 收银员模式，1 = 管理员模式 */
+    int running = 1;
+
+    /* 初始商品 */
+    strcpy(items[0].name, "Cola");
+    strcpy(items[0].code, "001");
+    items[0].price = 3.50;
+    items[0].stock = 10;
+
+    strcpy(items[1].name, "Lollipop");
+    strcpy(items[1].code, "002");
+    items[1].price = 0.50;
+    items[1].stock = 10;
+
+    strcpy(items[2].name, "Noodles");
+    items[2].price = 6.00;
+    strcpy(items[2].code, "003");
+    items[2].stock = 10;
+
+    item_count = 3;
+
+    while (running)
+    {
+        /* 根据模式显示不同提示符 */
+        if (admin_mode)
+            printf("admin> ");
+        else
+            printf("> ");
+        fflush(stdout);
+
+        if (read_line(line, sizeof(line)) == 0)
+            break;                     /* Ctrl+Z 回车：结束输入，退出 */
+
+        int n = split_words(line, words, MAX_WORDS);
+        if (n == 0)
+            continue;                  /* 空行 */
+
+        char* cmd = words[0];
+
+        /* quit / exit：两种模式下都可以直接退出程序 */
+        if (strcmp(cmd, "quit") == 0 || strcmp(cmd, "exit") == 0)
+        {
+            running = 0;
+            continue;
+        }
+
+        /* ================= 收银员模式 ================= */
+        if (admin_mode == 0)
+        {
+            if (strcmp(cmd, "prices") == 0)
+            {
+                print_prices();
+            }
+            else if (strcmp(cmd, "admin") == 0)
+            {
+                printf("Password: ");
+                fflush(stdout);
+                if (read_line(pw, sizeof(pw)) == 0)
+                {
+                    running = 0;
+                    continue;
+                }
+                if (strcmp(pw, admin_pass) == 0)
+                {
+                    admin_mode = 1;
+                    printf("Admin mode.\n");
+                }
+                else
+                {
+                    printf("Wrong password.\n");
+                }
+            }
+            else
+            {
+                /* 当作条码扫描 */
+                int idx = find_item(cmd);
+                if (idx >= 0)
+                    printf("%-8s %.2f\n", items[idx].name, items[idx].price);
+                else
+                    printf("ERROR: code not found\n");
+            }
+        }
+        /* ================= 管理员模式 ================= */
+        else
+        {
+            if (strcmp(cmd, "back") == 0)
+            {
+                admin_mode = 0;
+                printf("Bye.\n");
+            }
+            else if (strcmp(cmd, "prices") == 0)
+            {
+                print_prices();
+            }
+            /* ---------- 2.1 的命令 ---------- */
+            else if (strcmp(cmd, "setprice") == 0)
+            {
+                if (n < 3)
+                {
+                    printf("Usage: setprice <code> <price>\n");
+                    continue;
+                }
+                int idx = find_item(words[1]);
+                if (idx < 0)
+                    printf("ERROR: code not found\n");
+                else
+                {
+                    items[idx].price = atof(words[2]);   /* 字符串转小数 */
+                    printf("Price updated.\n");
+                }
+            }
+            else if (strcmp(cmd, "itemadd") == 0)
+            {
+                if (n < 4)
+                {
+                    printf("Usage: itemadd <code> <name> <price>\n");
+                    continue;
+                }
+                if (find_item(words[1]) >= 0)
+                {
+                    printf("ERROR: code already exists\n");
+                    continue;
+                }
+                if (item_count >= MAX_ITEMS)
+                {
+                    printf("ERROR: item list is full\n");
+                    continue;
+                }
+                strcpy(items[item_count].code, words[1]);
+                strcpy(items[item_count].name, words[2]);
+                items[item_count].price = atof(words[3]);
+                items[item_count].stock = 0;             /* 新商品库存先记 0 */
+                printf("%s(%s) added.\n",
+                    items[item_count].name, items[item_count].code);
+                item_count++;
+            }
+            else if (strcmp(cmd, "itemdel") == 0)
+            {
+                if (n < 2)
+                {
+                    printf("Usage: itemdel <code>\n");
+                    continue;
+                }
+                int idx = find_item(words[1]);
+                if (idx < 0)
+                {
+                    printf("ERROR: code not found\n");
+                }
+                else
+                {
+                    printf("%s(%s) removed.\n",
+                        items[idx].name, items[idx].code);
+                    /* 后面的元素整体往前挪一格 */
+                    for (int i = idx; i < item_count - 1; i++)
+                    {
+                        items[i] = items[i + 1];   /* 结构体整体赋值，一行搞定 */
+                    }
+                    item_count--;
+                }
+            }
+            /* ---------- 2.2 的新命令 ---------- */
+            else if (strcmp(cmd, "restock") == 0)
+            {
+                /* restock <条码> <数量>：增加库存 */
+                if (n < 3)
+                {
+                    printf("Usage: restock <code> <qty>\n");
+                    continue;
+                }
+                int idx = find_item(words[1]);
+                int qty = atoi(words[2]);               /* 字符串转整数 */
+                if (idx < 0)
+                {
+                    printf("ERROR: code not found\n");
+                }
+                else if (qty < 0)
+                {
+                    printf("ERROR: invalid quantity\n");
+                }
+                else
+                {
+                    items[idx].stock = items[idx].stock + qty;
+                    printf("%s(%s) stock is now %d.\n",
+                        items[idx].name, items[idx].code, items[idx].stock);
+                }
+            }
+            else if (strcmp(cmd, "setstock") == 0)
+            {
+                /* setstock <条码> <数量>：直接设置库存（盘点修正） */
+                if (n < 3)
+                {
+                    printf("Usage: setstock <code> <qty>\n");
+                    continue;
+                }
+                int idx = find_item(words[1]);
+                int qty = atoi(words[2]);               /* 字符串转整数 */
+                if (idx < 0)
+                {
+                    printf("ERROR: code not found\n");
+                }
+                else if (qty < 0)
+                {
+                    printf("ERROR: invalid quantity\n");
+                }
+                else
+                {
+                    items[idx].stock = qty;
+                    printf("%s(%s) stock is now %d.\n",
+                        items[idx].name, items[idx].code, items[idx].stock);
+                }
+            }
+            else
+            {
+                printf("ERROR: unknown command\n");
+            }
+        }
+    }
+
+    return 0;
+}once;
