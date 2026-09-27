@@ -1,0 +1,214 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+typedef struct {
+    char id[10];
+    char name[20];
+    double price;
+} Goods;
+
+Goods goods[] = {
+    {"001", "Cola", 3.50},
+    {"002", "Lollipop", 0.50},
+    {"003", "Noodles", 6.00}
+};
+const int goodsCnt = 3;
+
+int cart[3] = { 0, 0, 0 };
+int currentDay = 1;
+int orderSerial = 0;
+
+int findGoods(char* id)
+{
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        if (strcmp(goods[i].id, id) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void processLine(char* buf)
+{
+    char token[20];
+    char* p = buf;
+    while (sscanf(p, "%s", token) == 1)
+    {
+        int delta = 1;
+        char id[10];
+        if (token[0] == '-')
+        {
+            delta = -1;
+            strcpy(id, token + 1);
+        }
+        else
+        {
+            strcpy(id, token);
+        }
+        int idx = findGoods(id);
+        if (idx != -1)
+        {
+            cart[idx] += delta;
+            if (cart[idx] < 0)
+            {
+                cart[idx] = 0;
+            }
+            printf("%-8s %.2f x%d =%.2f\n", goods[idx].name, goods[idx].price, cart[idx], cart[idx] * goods[idx].price);
+        }
+        p += strlen(token);
+    }
+}
+
+void checkout()
+{
+    double ament = 0;
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        ament += cart[i] * goods[i].price;
+    }
+    if (ament <= 0)
+    {
+        printf("Empty cart.\n");
+        return;
+    }
+    orderSerial++;
+
+    char timeStr[20];
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    sprintf(timeStr, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+
+    printf("Receipt\n");
+    printf("Item        Pri. Qty Amount\n");
+    printf("--------------------------------\n");
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        if (cart[i] > 0)
+        {
+            double amt = cart[i] * goods[i].price;
+            printf("%-8s %.2f x%d =%.2f\n", goods[i].name, goods[i].price, cart[i], amt);
+        }
+    }
+    printf("--------------------------------\n");
+    printf("Total                  =%.2f\n", ament);
+
+    FILE* fp = fopen("sales.txt", "a");
+    if (fp != NULL)
+    {
+        fprintf(fp, "%d,%d,%s,%.2f,", currentDay, orderSerial, timeStr, ament);
+        for (int i = 0; i < goodsCnt; i++)
+        {
+            if (cart[i] > 0)
+            {
+                fprintf(fp, "%s x%d;", goods[i].name, cart[i]);
+            }
+        }
+        fprintf(fp, "\n");
+        fclose(fp);
+    }
+
+    cart[0] = 0;
+    cart[1] = 0;
+    cart[2] = 0;
+}
+
+void newday()
+{
+    currentDay++;
+    printf("New day started. Today's sales records cleared.\n");
+}
+
+void drop()
+{
+    cart[0] = 0;
+    cart[1] = 0;
+    cart[2] = 0;
+    printf("Cart dropped.\n");
+}
+
+void sales(int queryDay)
+{
+    FILE* fp = fopen("sales.txt", "r");
+    if (fp == NULL)
+    {
+        printf("Date: %d\n", queryDay);
+        printf("No.   Time       Items              Total\n");
+        printf("----------------------------------------\n");
+        printf("Daily: 0.00\n");
+        return;
+    }
+
+    printf("Date: %d\n", queryDay);
+    printf("No.   Time       Items              Total\n");
+    printf("----------------------------------------\n");
+
+    char line[256];
+    double dailyTotal = 0;
+    int day, no;
+    char tim[20];
+    double ament;
+    char itemInfo[128];
+
+    while (fgets(line, sizeof(line), fp) != NULL)
+    {
+        if (sscanf(line, "%d,%d,%[^,],%lf,%[^\n]", &day, &no, tim, &ament, itemInfo) == 5)
+        {
+            if (day == queryDay)
+            {
+                printf("%-4d %-10s %-18s %.2f\n", no, tim, itemInfo, ament);
+                dailyTotal += ament;
+            }
+        }
+    }
+    fclose(fp);
+    printf("----------------------------------------\n");
+    printf("Daily: %.2f\n", dailyTotal);
+}
+
+int main()
+{
+    char buffer[256];
+    while (1)
+    {
+        printf("> ");
+        fgets(buffer, sizeof(buffer), stdin);
+        buffer[strcspn(buffer, "\n")] = '\0';
+
+        char cmd[32];
+        int paraDay;
+        sscanf(buffer, "%s", cmd);
+
+        if (strcmp(cmd, "checkout") == 0)
+        {
+            checkout();
+        }
+        else if (strcmp(cmd, "drop") == 0)
+        {
+            drop();
+        }
+        else if (strcmp(cmd, "newday") == 0)
+        {
+            newday();
+        }
+        else if (strcmp(cmd, "sales") == 0)
+        {
+            if (sscanf(buffer, "%s %d", cmd, &paraDay) == 2)
+            {
+                sales(paraDay);
+            }
+            else
+            {
+                sales(currentDay);
+            }
+        }
+        else
+        {
+            processLine(buffer);
+        }
+    }
+    return 0;
+}
