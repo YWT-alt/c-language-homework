@@ -1,0 +1,289 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+/* 创建变量 */
+// 定义结构体 
+typedef struct {
+    char id[10]; //条码
+    char name[20]; //名称Items
+    double price; //单价
+    int stock; //库存Stock
+} Goods;
+//创建结构体数组
+Goods goods[] = {
+    {"001", "Cola", 3.50, 70},
+    {"002", "Lollipop", 0.50, 80},
+    {"003", "Noodles", 6.00, 20}
+}; 
+//基本变量
+const int goodsCnt = 3; //商品种类
+int cart[3] = { 0, 0, 0 }; //数量
+int currentDay = 1; //天数Date
+int orderSerial = 0; //流水号No.
+
+/* 定义函数 */
+//由条码找下标  
+int findGoods(char* id) 
+{
+    for (int i = 0; i < goodsCnt; i++) 
+    {
+        if (strcmp(goods[i].id, id) == 0) 
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+//根据下标增减商品
+void processLine(char* buf) 
+{
+    char token[20];
+    char* p = buf; 
+while (sscanf(p, "%s", token) == 1)  
+    {
+        int delta = 1;
+        char id[10];
+        if (token[0] == '-')     
+        { 
+            delta = -1;
+            strcpy(id, token + 1); //token[1]开始后面的一个单词
+        }
+        else                      
+        {
+            strcpy(id, token);
+        }
+        int idx = findGoods(id);
+        if (idx != -1)  //成功由条码找到下标
+        {
+            cart[idx] += delta;
+            if (cart[idx] < 0)
+            {
+                cart[idx] = 0; //增减1后仍<=0
+            }
+            printf("%-8s %.2f x%d =%.2f\n", goods[idx].name, goods[idx].price, cart[idx], cart[idx] * goods[idx].price);
+        }
+        p += strlen(token)+1;  //数组token
+                               //p跳过当前字符个数
+    }
+}
+//checkout
+void checkout()
+{
+    double ament = 0;
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        ament += cart[i] * goods[i].price;
+    }
+    if (ament <= 0)
+    {
+        printf("Empty cart.\n");
+        return;
+}
+
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        goods[i].stock -= cart[i]; //-=自减
+    }
+orderSerial++;
+//Time
+    char timeStr[20];
+time_t now = time(NULL);  
+struct tm* t = localtime(&now);
+sprintf(timeStr, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec); 
+ //打印小票
+    printf("Receipt\n");
+    printf("Item        Pri. Qty Amount\n");
+    printf("--------------------------------\n");
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        if (cart[i] > 0)
+        {
+            double amt = cart[i] * goods[i].price;
+            printf("%-8s %.2f x%d =%.2f\n", goods[i].name, goods[i].price, cart[i], amt);
+        }
+    }
+    printf("--------------------------------\n");
+    printf("Total                  =%.2f\n", ament);
+    //将本次交易记录追加入文件
+    FILE* fp = fopen("sales.txt", "a"); //①打开文件+追加模式
+    if (fp != NULL) //文件打开成功
+    {
+        fprintf(fp, "%d,%d,%s,%.2f,", currentDay, orderSerial, timeStr, ament); 
+        for (int i = 0; i < goodsCnt; i++)
+        {
+            if (cart[i] > 0)
+            {
+                fprintf(fp, "%s x%d;", goods[i].name, cart[i]);
+            }
+        }
+        fprintf(fp, "\n"); //②fprintf追加内容
+        fclose(fp); //③关闭文件，上传数据
+    }
+    //清空记录
+    cart[0] = 0;
+    cart[1] = 0;
+    cart[2] = 0; 
+}
+//newday
+void newday()
+{
+    currentDay++;
+    printf("New day started. Today's sales records cleared.\n");
+}
+//drop
+void drop()
+{
+    cart[0] = 0;
+    cart[1] = 0;
+    cart[2] = 0;
+    printf("Cart dropped.\n");
+}
+//sales
+void sales(int queryDay)
+{
+    FILE* fp = fopen("sales.txt", "r"); //①打开文件+只读模式
+    if (fp == NULL) //打开文件失败
+    {
+        printf("Date: %d\n", queryDay);
+        printf("No.   Time       Items              Total\n");
+        printf("----------------------------------------\n");
+        printf("Daily: 0.00\n");
+        return;
+    }
+    else //文件打开成功
+printf("Date: %d\n", queryDay);
+printf("No.   Time       Items              Total\n");
+    printf("----------------------------------------\n");
+
+    char line[256];
+    double dailyTotal = 0;
+    int day, no;
+    char tim[20];
+    double ament;
+    char itemInfo[128];
+
+    while (fgets(line, sizeof(line), fp) != NULL) //②读取一整行存入数组line
+    {
+        if (sscanf(line, "%d,%d,%[^,],%lf,%[^\n]", &day, &no, tim, &ament, itemInfo) == 5) 
+//③将数组line中的数据分类存入基本变量
+        {
+            if (day == queryDay) //仅查看当日
+            {
+                printf("%-4d %-10s %-18s %.2f\n", no, tim, itemInfo, ament);
+                dailyTotal += ament;
+            }
+        }
+    }
+fclose(fp); //④关闭文件
+printf("----------------------------------------\n");
+    printf("Daily: %.2f\n", dailyTotal);
+}
+//restock
+void restock(char* buf)
+{
+    char code[10];
+    int num;
+    if (sscanf(buf, "restock %s %d", code, &num) == 2)
+    {
+        int idx = findGoods(code);
+        if (idx != -1 && num > 0) //成功由条码找到下标
+        {
+            goods[idx].stock += num;
+            printf("Restock success.\n");
+        }
+        else
+        {
+            printf("Invalid input.\n");
+        }
+    }
+}
+//setstock
+void setstock(char* buf)
+{
+    char code[10];
+    int num;
+    if (sscanf(buf, "setstock %s %d", code, &num) == 2)
+    {
+        int idx = findGoods(code);
+        if (idx != -1 && num >= 0)
+        {
+            goods[idx].stock = num;
+            printf("Set stock success.\n");
+        }
+        else
+        {
+            printf("Invalid input.\n");
+        }
+    }
+}
+//prices
+void prices()
+{
+    printf("Item        No.  Pri.  Stock\n");
+    printf("-----------------------------\n");
+    for (int i = 0; i < goodsCnt; i++)
+    {
+        printf("%-10s %s %.2f %d\n", goods[i].name, goods[i].id, goods[i].price, goods[i].stock);
+    }
+}
+/*----------------------------------主程序---------------------------------------*/
+int main()
+{
+    char buffer[256];
+    while (1)
+    {
+        /* 打印提示符 */
+        printf("> ");
+        /* 读取一整行存入数组buffer */
+        fgets(buffer, sizeof(buffer), stdin);
+        /* 删除换行符 */
+        buffer[strcspn(buffer, "\n")] = '\0'; //算特定字符下标
+
+        char cmd[32];
+        int paraDay;
+        /* 把一个词从数组buffer中取出存入数组cmd */
+        sscanf(buffer, "%s", cmd);
+        if (strcmp(cmd, "checkout") == 0)
+        {
+            checkout();
+        }
+        else if (strcmp(cmd, "drop") == 0)
+        {
+            drop();
+        }
+        else if (strcmp(cmd, "newday") == 0)
+        {
+            newday();
+        }
+        else if (strcmp(cmd, "sales") == 0)
+        {
+            if (sscanf(buffer, "%s %d", cmd, &paraDay) == 2)
+            {
+                sales(paraDay);
+            }
+            else
+            {
+                sales(currentDay);
+            }
+        }
+        else if (strcmp(cmd, "restock") == 0)
+        {
+            restock(buffer);
+        }
+        else if (strcmp(cmd, "setstock") == 0)
+        {
+            setstock(buffer);
+        }
+        else if (strcmp(cmd, "prices") == 0)
+        {
+            prices();
+        }
+        else
+        {
+            processLine(buffer);
+        }
+    }
+    return 0;
+}
